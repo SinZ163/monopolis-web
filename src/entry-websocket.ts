@@ -436,16 +436,16 @@ const EventHandlers: EventHandlers = {
 			dice2,
 		});
 
-		if (dice1 === dice2 && turnState.rolls.length >= 3) {
-			// FIXME
-			//this.GotoJail();
-			return;
-		} else {
+		//if (dice1 === dice2 && turnState.rolls.length >= 3) {
+		//	// FIXME
+		//	//this.GotoJail();
+		//	return;
+		//} else {
 			let futureLocation = (playerState.location + dice1 + dice2) % 40;
 			console.log(playerState.location, dice1, dice2, futureLocation);
 			dispatchState(peer, "monopolis:player_state:" + playerState.pID, playerState);
 			MoveForwardToLocation(peer, futureLocation);
-		}
+		//}
 	},
 	monopolis_requestpayrent: function (peer: Peer, payload: undefined): void {
 		// TODO: AntiCheat (check peer against current turn)
