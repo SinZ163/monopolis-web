@@ -94,8 +94,12 @@ function dispatch<T extends Omit<EventMessage, "type">>(ws: WebSocket, event: T)
 }
 
 const wsRegistrationCache: Record<string, any> = {};
-ws.addEventListener("message", ev => {
-  let msg = JSON.parse(ev.data);
+ws.addEventListener("message", async ev => {
+  let data = ev.data;
+  if (ev.data instanceof Blob) {
+    data = await ev.data.text();
+  }
+  let msg = JSON.parse(data);
   if ("id" in msg && "value" in msg) {
     wsRegistrationCache[msg.id] = msg.value;
   }
@@ -116,8 +120,12 @@ function createWSSignal<T>(ws: WebSocket, identifier: string, defaultValue: T): 
     setValue(wsRegistrationCache[identifier]);
   }
 
-  const handleMessage = (ev: MessageEvent) => {
-    let msg = JSON.parse(ev.data);
+  const handleMessage = async (ev: MessageEvent) => {
+    let data = ev.data;
+    if (ev.data instanceof Blob) {
+      data = await ev.data.text();
+    }
+    let msg = JSON.parse(data);
     if ("id" in msg && "value" in msg) {
       if (msg.id === identifier) {
         setBypass(true);
