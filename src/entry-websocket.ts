@@ -764,6 +764,14 @@ function subscribeToLatest(peer: Peer, event: {id: string, value: any}) {
 	peer.send({...event, type: "init"});
 }
 
+setInterval(() => {
+	for (let connection of Object.values(PlayerMap)) {
+		if (connection.connected) {
+			connection.peer.send({type: "ping"});
+		}
+	}
+}, 30_000);
+
 export default eventHandler({
 	handler: () => {},
 	websocket: defineWebSocket({

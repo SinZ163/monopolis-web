@@ -100,6 +100,9 @@ ws.addEventListener("message", async ev => {
     data = await ev.data.text();
   }
   let msg = JSON.parse(data);
+  if ("type" in msg && msg["type"] === "ping") {
+    ws.send(JSON.stringify({type: "pong"}));
+  }
   if ("id" in msg && "value" in msg) {
     wsRegistrationCache[msg.id] = msg.value;
   }
@@ -765,6 +768,7 @@ function LobbyManagement({lobby}: {lobby: Accessor<CustomNetTableDeclarations["l
     </Show>
   </LobbyMenu>);
 }
+
 function Monopolis() {
   const [lobbyState] = createWSSignal<CustomNetTableDeclarations["lobbyData"]|undefined>(ws, "monopolis:lobbyData", undefined);
   
