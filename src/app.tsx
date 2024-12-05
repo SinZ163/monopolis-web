@@ -20,7 +20,8 @@ import { ColourToString, PlayerColors } from "./common/utils";
 import { AuxRollResultState, CardPendingState, CardResultState, DiceRollState, JailedState, PayRentState, UnOwnedState } from "./common/turnstate";
 import { generateUUID } from "three/src/math/MathUtils.js";
 
-const ws = new WebSocket("ws://localhost:3000/_ws");
+const protocol = window.location.protocol === "http:" ? "ws" : "wss";
+const ws = new WebSocket(`${protocol}://${window.location.host}/_ws`);
 
 
 interface Player {
