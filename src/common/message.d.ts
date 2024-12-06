@@ -1,4 +1,4 @@
-import { CustomGameEventDeclarations } from "./events";
+import { CustomGameEventDeclarations, StartEvents } from "./events";
 
 interface RegisterMessage {
     type: "register";
@@ -15,8 +15,13 @@ interface EventMessage {
     id: keyof CustomGameEventDeclarations;
     payload: CustomGameEventDeclarations[EventMessage["id"]];
 }
+interface StartEventMessage  {
+    type: "startevent";
+    id: keyof StartEvents;
+    payload: StartEvents[StartEventMessage["id"]];
+}
 interface ResumeMessage {
     type: "resume";
     localId: string;
 }
-type WSMessage = RegisterMessage | ChangeMessage | EventMessage | ResumeMessage;
+type WSMessage = RegisterMessage | ChangeMessage | EventMessage | StartEventMessage | ResumeMessage;

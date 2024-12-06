@@ -22,6 +22,14 @@ interface TeamState {
     alive: boolean;
 }
 
+interface LobbyMetadata {
+    lobbyId: string,
+	name: string,
+	hostName: string,
+	started: boolean,
+	playerCount: number,
+	maxPlayers: number, // Will be hardcoded for now
+}
 interface CustomNetTableDeclarations {
     property_ownership: Record<PurchasableTiles, PropertyOwnership>,
     player_state: Record<string, PlayerState>,
@@ -42,6 +50,7 @@ interface CustomNetTableDeclarations {
         players: {
             name: string,
             localId: string,
+            configured: boolean,
             colour: number,
             team: number,
         }[]
@@ -49,6 +58,12 @@ interface CustomNetTableDeclarations {
             name: string,
         }[],
         started: boolean,
+        name: string,
+        host: {
+            name: string,
+            localId: string,
+        },
+        id: string,
     }
 }
 interface NullUIState {

@@ -14,8 +14,8 @@ import * as THREE from "three";
 window.THREE = THREE;
 
 import 'solid-devtools';
-import { CustomNetTableDeclarations } from "./common/state";
-import { EventMessage } from "./common/message";
+import { CustomNetTableDeclarations, LobbyMetadata } from "./common/state";
+import { EventMessage, StartEventMessage } from "./common/message";
 import { ColourToString, PlayerColors } from "./common/utils";
 import { AuxRollResultState, CardPendingState, CardResultState, DiceRollState, JailedState, PayRentState, UnOwnedState } from "./common/turnstate";
 import { generateUUID } from "three/src/math/MathUtils.js";
@@ -86,10 +86,10 @@ const ColourMap = {
   "DarkBlue": new THREE.Color(0x446aa9),
 }
 
-function dispatch<T extends Omit<EventMessage, "type">>(ws: WebSocket, event: T) {
+function dispatch<T extends Omit<EventMessage|StartEventMessage, "type">>(ws: WebSocket, event: T) {
   ws.send(JSON.stringify({
     ...event,
-    type: "event",
+    type: event.id.startsWith("start_") ?  "startevent" : "event",
   }));
 }
 
@@ -693,95 +693,128 @@ const Column = styled("div")`
   display: flex;
   flex-direction: column;
 `
-function LobbyManagement({lobby}: {lobby: Accessor<CustomNetTableDeclarations["lobbyData"]>}) {
-  const [localId, setLocalId] = createSignal(sessionStorage.getItem("MONOPOLIS_LOCALID"));
+function LobbyManagement({lobby}: {lobby: Accessor<CustomNetTableDeclarations["lobbyData"]|undefined>}) {
+  const [localId] = createWSSignal(ws, "localId", sessionStorage.getItem("MONOPOLIS_LOCALID"));
+  const [localName] = createWSSignal(ws, "localName", "");
+  const [lobbyList] = createWSSignal<LobbyMetadata[]>(ws, "lobbyList", []);
 
   const proposedLocalId = generateUUID();
 
-  const [localName, setLocalName] = createSignal("");
+  // Local state for User Creation
+  const [proposedLocalName, setProposedLocalName] = createSignal("");
+
+  // Local state for creating a lobby
+  const [proposedLobbyName, setProposedLobbyName] = createSignal("");
+
+  // Local state for Joining as a user in a lobby
   const [localColour, setLocalColour] = createSignal<number|undefined>();
-
-  const localTeam = () => lobby().players.find(player => player.localId === localId())?.team;
-
-  const isFirstPlayer = () => lobby().players[0] != undefined && lobby().players[0].localId === localId();
-
-  const unassignedPlayers = () => lobby().players.filter(player => player.team === -1);
-
-  effect(() => {
-    if (localId() != null && !lobby().players.find(player => player.localId === localId())) {
-      setLocalId(null);
-    }
-    if (localId() == null && lobby().players.find(player => player.localId === proposedLocalId)) {
-      setLocalId(proposedLocalId);
-      sessionStorage.setItem("MONOPOLIS_LOCALID", proposedLocalId);
-    }
-  });
+  
+  // Local state for creating a team in a lobby
   const [pendingTeamName, setPendingTeamName] = createSignal("");
+
+  const localPlayer = () => lobby()?.players.find(player => player.localId === localId());
+  const localTeam = () => localPlayer()?.team;
+  const isFirstPlayer = () => lobby()?.players[0] != undefined && lobby()?.players[0].localId === localId();
+  const unassignedPlayers = () => lobby()?.players.filter(player => player.team === -1);
   return (<LobbyMenu>
     <h1>Lobby Management</h1>
-    <Show when={localId() == null}>
-      <Column>
-        <label>Player Name: </label>
-        <input type="text" value={localName()} onInput={e => setLocalName(e.currentTarget.value)}></input>
-        <label>Colour picker</label>
+    <Switch>
+      <Match when={localId() == null}>
+        <Column>
+          <label>Player Name: </label>
+          <input type="text" value={proposedLocalName()} onInput={e => setProposedLocalName(e.currentTarget.value)}></input>
+          <button disabled={proposedLocalName().length < 1} onClick={() => dispatch(ws, {id: "start_createuser", payload: {playerName: proposedLocalName(), localId: proposedLocalId}})}>Select Name</button>
+        </Column>
+      </Match>
+      <Match when={lobby() == null}>
+        <h3>Join Lobby</h3>
         <FlexRow>
-          <Index each={PlayerColors}>
-            {(colour, index) => lobby().players.find(player => player.colour === colour()) == null && <button style={{"background-color": ColourToString(colour()), height: "20px"}} onClick={e => setLocalColour(colour())}></button>}
-          </Index>
-        </FlexRow>
-        <button disabled={localColour() == null || localName().length < 1} onClick={() => dispatch(ws, {id: "lobby_addplayer", payload: {playerName: localName(), playerColour: localColour()!, localId: proposedLocalId}})}>Join Game</button>
-      </Column>
-    </Show>
-    <Show when={localId() != null}>
-      <Show when={unassignedPlayers().length > 0}>
-        <FlexRow style={{"justify-content": "flex-start"}}>
-          <b><label>Unassigned Players:</label></b>
-          <For each={unassignedPlayers()}>
-            {(item, index) => <span>{item.name}</span>}
-          </For>
-        </FlexRow>
-      </Show>
-      <FlexRow>
-        <Index each={lobby().teams}>
-          {(team, tID) => <Column>
-            <h3>{team().name}</h3>
-            <Index each={lobby().players}>
-              {(player, pID) => <Show when={player().team === tID}>
-                <h4>{player().name}</h4>
-              </Show>}
-            </Index>
-            <Show when={localTeam() === -1}>
-              <button onClick={() => dispatch(ws, {id: "lobby_jointeam", payload: {teamId: tID}})}>Join Team</button>
-            </Show>
-          </Column>}
-        </Index>
-        <Show when={lobby().teams.length < 8}>
           <Column>
-            <input type="text" value={pendingTeamName()} oninput={e => setPendingTeamName(e.currentTarget.value)}></input>
-            <button disabled={pendingTeamName().length < 1} onClick={() => dispatch(ws, {id: "lobby_addteam", payload: {teamName: pendingTeamName()}})}>Add Team</button>
+            <For each={lobbyList()}>
+              {(item, index) => <div>
+                  <h3>{item.name}</h3>
+                  <div>hosted by {item.hostName}</div>
+                  <div>{item.playerCount}/{item.maxPlayers} players</div>
+                  <button disabled={(item.maxPlayers - item.playerCount) < 1} onClick={() => dispatch(ws, {id: "start_lobbyjoin", payload: {lobbyId: item.lobbyId}})}>Join Game</button>
+                </div>}
+            </For>
+          </Column>
+          <Column>
+            <label>Lobby Name:</label>
+            <input type="text" value={proposedLobbyName()} onInput={e => setProposedLobbyName(e.currentTarget.value)}></input>
+            <button onClick={() => dispatch(ws, {id: "start_lobbycreate", payload: {lobbyName: proposedLobbyName()}})}>Create Lobby</button>
+          </Column>
+        </FlexRow>
+      </Match>
+      <Match when={true}>
+        <Show when={localPlayer()?.configured === false}>
+          <Column>
+            <label>Colour picker</label>
+            <FlexRow>
+              <Index each={PlayerColors}>
+                {(colour, index) => lobby()?.players.find(player => player.colour === colour()) == null && <button style={{"background-color": ColourToString(colour()), height: "20px"}} onClick={e => setLocalColour(colour())}></button>}
+              </Index>
+            </FlexRow>
+            <button disabled={localColour() == null || localName().length < 1} onClick={() => dispatch(ws, {id: "lobby_addplayer", payload: {playerName: localName(), playerColour: localColour()!, localId: proposedLocalId}})}>Join Game</button>
           </Column>
         </Show>
-      </FlexRow>
-      <Show when={isFirstPlayer()}>
-        <button onclick={() => dispatch(ws, {id: "lobby_start", payload: undefined})}>Start Game</button>
-      </Show>
-    </Show>
+        <Show when={localPlayer()?.configured === true}>
+          <Show when={(unassignedPlayers()?.length ?? 0) > 0}>
+            <FlexRow style={{"justify-content": "flex-start"}}>
+              <b><label>Unassigned Players:</label></b>
+              <For each={unassignedPlayers()}>
+                {(item, index) => <span>{item.name}</span>}
+              </For>
+            </FlexRow>
+          </Show>
+          <FlexRow>
+            <Index each={lobby()?.teams}>
+              {(team, tID) => <Column>
+                <h3>{team().name}</h3>
+                <Index each={lobby()?.players}>
+                  {(player, pID) => <Show when={player().team === tID}>
+                    <h4>{player().name}</h4>
+                  </Show>}
+                </Index>
+                <Show when={localTeam() === -1}>
+                  <button onClick={() => dispatch(ws, {id: "lobby_jointeam", payload: {teamId: tID}})}>Join Team</button>
+                </Show>
+              </Column>}
+            </Index>
+            <Show when={(lobby()?.teams.length ?? 0) < 8}>
+              <Column>
+                <input type="text" value={pendingTeamName()} oninput={e => setPendingTeamName(e.currentTarget.value)}></input>
+                <button disabled={pendingTeamName().length < 1} onClick={() => dispatch(ws, {id: "lobby_addteam", payload: {teamName: pendingTeamName()}})}>Add Team</button>
+              </Column>
+            </Show>
+          </FlexRow>
+          <Show when={isFirstPlayer()}>
+            <button onclick={() => dispatch(ws, {id: "lobby_start", payload: undefined})}>Start Game</button>
+          </Show>
+        </Show>
+      </Match>
+    </Switch>
   </LobbyMenu>);
 }
 
 function Monopolis() {
   const [lobbyState] = createWSSignal<CustomNetTableDeclarations["lobbyData"]|undefined>(ws, "monopolis:lobbyData", undefined);
-  
-  const localId = sessionStorage.getItem("MONOPOLIS_LOCALID"); 
-  if (localId) {
-    ws.send(JSON.stringify({type: "resume", localId }));
-  }
+
+  const [localId] = createWSSignal(ws, "localId", sessionStorage.getItem("MONOPOLIS_LOCALID"));
+  effect(() => {
+    let id = localId();
+    if (id) {
+      sessionStorage.setItem("MONOPOLIS_LOCALID", id);
+    } else {
+      sessionStorage.removeItem("MONOPOLIS_LOCALID");
+    }
+  })
   return (
-    <Show when={lobbyState() != undefined}>
+    <>
       <Index each={TileDB}>
         {(item, index) => <Space info={item()} index={index} />}
       </Index>
-      <Show when={lobbyState()!.started}>
+      <Show when={lobbyState()?.started}>
         <Index each={lobbyState()!.players}>
           {(item, index) => <Player index={index} />}
         </Index>
@@ -790,10 +823,10 @@ function Monopolis() {
         </Index>
         <GlobalHUD />
       </Show>
-      <Show when={lobbyState()!.started === false}>
+      <Show when={(lobbyState()?.started ?? false) === false}>
         <LobbyManagement lobby={lobbyState}/>
       </Show>
-    </Show>
+    </>
   )
 }
 

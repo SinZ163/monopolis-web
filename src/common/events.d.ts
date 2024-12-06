@@ -32,14 +32,27 @@ interface CustomGameEventDeclarations {
     lobby_jointeam: LobbyJoinTeamEvent,
     lobby_start: MonopolisEmptyEvent,
 }
+interface StartEvents {
+    start_lobbycreate: StartLobbyCreateEvent,
+    start_lobbyjoin: StartLobbyJoinEvent,
+    start_createuser: StartCreateUserEvent,
+}
+interface StartCreateUserEvent {
+    playerName: string,
+    localId: string,
+}
+interface StartLobbyCreateEvent {
+    lobbyName: string,
+}
+interface StartLobbyJoinEvent {
+    lobbyId: string,
+}
 
 interface LobbyAddTeamEvent {
     teamName: string,
 }
 interface LobbyAddPlayerEvent {
-    playerName: string,
     playerColour: number,
-    localId: string,
 }
 interface LobbyJoinTeamEvent {
     teamId: number,
