@@ -19,9 +19,20 @@ import { EventMessage, StartEventMessage } from "./common/message";
 import { ColourToString, PlayerColors } from "./common/utils";
 import { AuxRollResultState, CardPendingState, CardResultState, DiceRollState, JailedState, PayRentState, UnOwnedState } from "./common/turnstate";
 import { generateUUID } from "three/src/math/MathUtils.js";
+import { getReasonForWebSocketClose } from "./server-actions";
 
 const protocol = window.location.protocol === "http:" ? "ws" : "wss";
 const ws = new WebSocket(`${protocol}://${window.location.host}/_ws`);
+
+const [wsErrorReason, setWsErrorReason] = createSignal("");
+ws.addEventListener("close", async e => {
+  if (e.reason === "") {
+    let serverReason = await getReasonForWebSocketClose(e.code, e.reason);
+    setWsErrorReason(serverReason);
+  } else {
+    setWsErrorReason(e.reason);
+  }
+});
 
 
 interface Player {
@@ -732,7 +743,7 @@ function LobbyManagement({lobby}: {lobby: Accessor<CustomNetTableDeclarations["l
           <Column>
             <For each={lobbyList()}>
               {(item, index) => <div>
-                  <h3>{item.name}</h3>
+                  <h3>{item.name}{item.started ? " (in progress)" : ""}</h3>
                   <div>hosted by {item.hostName}</div>
                   <div>{item.playerCount}/{item.maxPlayers} players</div>
                   <button disabled={(item.maxPlayers - item.playerCount) < 1} onClick={() => dispatch(ws, {id: "start_lobbyjoin", payload: {lobbyId: item.lobbyId}})}>Join Game</button>
@@ -867,6 +878,12 @@ export default function App() {
       <Show when={wsReady()}>
         {renderer.domElement}
         <Monopolis />
+      </Show>
+      <Show when={!wsReady() && wsErrorReason()}>
+        <LobbyMenu>
+          <h1>Connection to Monopolis failed</h1>
+          <pre>{wsErrorReason()}</pre>
+        </LobbyMenu>
       </Show>
     </ThreeContext.Provider>
   );
