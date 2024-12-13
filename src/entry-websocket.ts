@@ -281,8 +281,7 @@ class MonopolisLobbyInstance {
 		} else if (tile.type === "CardDraw") {
 			this.setTurnState(peer, {type: "card_prompt", pID: playerState.pID, rolls: turnState.rolls, deck: tile.category as Deck});
 		} else if (tile.id === "gotojail") {
-			// FIXME
-			//this.GotoJail();
+			this.GotoJail(peer);
 		} else {
 			this.dispatchState(peer, "monopolis:player_state:"+playerState.pID, playerState);
 			this.setTurnState(peer, {type: "endturn", pID: playerState.pID, rolls: turnState.rolls});
@@ -308,9 +307,9 @@ class MonopolisLobbyInstance {
 		}
 	}
 	private NextTurn(peer: Peer) {
-		// TODO: this.Anticheat (check peer against current turn)
 		let turnState = this.DataModel.misc.current_turn;
 		if (turnState.type !== "endturn") return;
+		this.Anticheat(peer, turnState.pID);
 
 		let rollOrder = this.DataModel.misc.roll_order;
 		let currentIndex = rollOrder.findIndex(pID => turnState.pID === pID);
@@ -321,14 +320,9 @@ class MonopolisLobbyInstance {
 		const aliveTeamIDs = Object.values(this.DataModel.team_state).filter(team => team.alive).map(team => team.tID);
 		let playerStates = Object.values(this.DataModel.player_state).filter(player => aliveTeamIDs.indexOf(player.team) !== -1);
 		console.log("Have we won yet?", playerStates.length);
-		/*stats?.SetGameInfo({
-			propertyOwnership: this.propertyOwnership.GetAllValues(),
-			playerState: this.playerState.GetAllValues()
-		});*/
 		if (playerStates.length === 1) {
 			console.log("Win?");
-			// TODO: Replace with custom postgame as dedi servers instantly turn off when a winner is announced
-			//GameRules.SetGameWinner(PlayerResource.GetPlayer(playerStates[0].pID)!.GetTeam());
+			// TODO: Winner screen?
 		}
 		let nextIndex = currentIndex as number;
 		let nextPlayer: PlayerState;
@@ -424,6 +418,24 @@ class MonopolisLobbyInstance {
 		this.dispatchState(peer, "monopolis:lobbyData", this.DataModel.lobbyData);
 		this.StartTurn(peer);
 	}
+    private LeaveJail(peer: Peer) {
+		let turnState = this.DataModel.misc.current_turn;
+		if (turnState.type !== "jailed") return;
+		const playerState = this.DataModel.player_state[turnState.pID];
+
+        playerState.jailed = 0;
+        playerState.location = 10;
+		this.dispatchState(peer, "monopolis:player_state:"+playerState.pID, this.DataModel.player_state[playerState.pID]);
+    }
+    private GotoJail(peer: Peer) {
+		let turnState = this.DataModel.misc.current_turn;
+		if (turnState.type !== "diceroll" && turnState.type !== "card_result") return;
+		const playerState = this.DataModel.player_state[turnState.pID];
+        this.setTurnState(peer, {type: "endturn", pID: playerState.pID, rolls: turnState.rolls});
+        playerState.jailed = 3;
+        playerState.location = -1;
+		this.dispatchState(peer, "monopolis:player_state:"+playerState.pID, this.DataModel.player_state[playerState.pID]);
+    }
 	private setTurnState(peer: Peer, turnState: TurnState) {
 		this.DataModel.misc.current_turn = turnState;
 		this.dispatchState(peer, "monopolis:current_turn", this.DataModel.misc.current_turn);
@@ -437,7 +449,6 @@ class MonopolisLobbyInstance {
 	}
 	public EventHandlers: EventHandlers = {
 		monopolis_requestdiceroll: (peer: Peer, payload: undefined): void => {
-			// TODO: this.Anticheat (check peer against current turn)
 			let turnState = this.DataModel.misc.current_turn;
 			if (turnState.type !== "start" && turnState.type !== "auxroll_prompt" && turnState.type !== "jailed") {
 				return;
@@ -461,27 +472,21 @@ class MonopolisLobbyInstance {
 				return;
 			}
 			turnState.rolls = [...turnState.rolls, { dice1, dice2 }];
-
 			// We are in jail and did NOT get doubles :(
 			if (playerState.jailed > 0 && dice1 !== dice2) {
 				playerState.jailed--;
 				this.dispatchState(peer, "monopolis:player_state:" + playerState.pID, playerState);
 				if (playerState.jailed === 0) {
 					this.setTurnState(peer, turnState);
-					// FIXME
 					this.StartTurn(peer, true);
 				} else {
 					this.setTurnState(peer, { type: "endturn", pID: playerState.pID, rolls: turnState.rolls });
 				}
 				return;
 			} else if (playerState.jailed > 0) {
-				// FIXME
-				/*this.LeaveJail();
-				let oldRolls = turnState.rolls;
-				const newcurrent = this.GetCurrentPlayerState();
-				turnState.rolls = oldRolls;
+				this.LeaveJail(peer);
 				// cheesy logic to make sure its not treated as a double later on
-				turnState.rolls.push({dice1: 1, dice2: -1});*/
+				turnState.rolls.push({dice1: 1, dice2: -1});
 			}
 			this.setTurnState(peer, {
 				pID: playerState.pID,
@@ -491,19 +496,17 @@ class MonopolisLobbyInstance {
 				dice2,
 			});
 
-			//if (dice1 === dice2 && turnState.rolls.length >= 3) {
-			//	// FIXME
-			//	//this.GotoJail();
-			//	return;
-			//} else {
+			if (dice1 === dice2 && turnState.rolls.length >= 3) {
+				this.GotoJail(peer);
+				return;
+			} else {
 				let futureLocation = (playerState.location + dice1 + dice2) % 40;
 				console.log(playerState.location, dice1, dice2, futureLocation);
 				this.dispatchState(peer, "monopolis:player_state:" + playerState.pID, playerState);
 				this.MoveForwardToLocation(peer, futureLocation);
-			//}
+			}
 		},
 		monopolis_requestpayrent: (peer: Peer, payload: undefined): void => {
-			// TODO: this.Anticheat (check peer against current turn)
 			let turnState = this.DataModel.misc.current_turn;
 			if (turnState.type !== "payrent" && turnState.type !== "jailed") {
 				return;
@@ -522,17 +525,15 @@ class MonopolisLobbyInstance {
 				}
 				teamState.money -= 50;
 				this.dispatchState(peer, "monopolis:team_state:" + playerState.team, teamState);
-				// FIXME
-				/*this.LeaveJail();
-				current = this.GetCurrentPlayerState();
-				if (turnState.preRolled === 1) {
-					let diceRoll = toArray(turnState.rolls).pop();
-					if (!diceRoll) throw new Error("Why is there no dice roll?");
-					CustomNetTables.SetTableValue("misc", "current_turn", {type: "diceroll", dice1: diceRoll.dice1, dice2: diceRoll.dice2, pID: current.pID, rolls: turnState.rolls});
-					this.MoveForwardToLocation(peer, (current.location + diceRoll.dice1 + diceRoll.dice2) % 40);
+				this.LeaveJail(peer);
+				if (turnState.preRolled === true) {
+					if (turnState.rolls.length < 1) throw new Error("Why is there no dice roll?");
+					let diceRoll = turnState.rolls[turnState.rolls.length - 1];
+					this.setTurnState(peer, {type: "diceroll", dice1: diceRoll.dice1, dice2: diceRoll.dice2, pID: playerState.pID, rolls: turnState.rolls});
+					this.MoveForwardToLocation(peer, (playerState.location + diceRoll.dice1 + diceRoll.dice2) % 40);
 				} else {
-					this.this.StartTurn();
-				}*/
+					this.StartTurn(peer);
+				}
 				return;
 			}
 
@@ -557,7 +558,6 @@ class MonopolisLobbyInstance {
 			//throw new Error("Function not implemented.");
 		},
 		monopolis_requestpurchase: (peer: Peer, payload: undefined): void => {
-			// TODO: this.Anticheat (check peer against current turn)
 			let turnState = this.DataModel.misc.current_turn;
 			if (turnState.type !== "unowned") return;
 			if (this.Anticheat(peer, turnState.pID)) {
@@ -581,7 +581,6 @@ class MonopolisLobbyInstance {
 			this.setTurnState(peer, { pID: playerState.pID, rolls: turnState.rolls, type: "endturn" });
 		},
 		monopolis_requestcard: (peer: Peer, payload: undefined): void => {
-			// TODO: this.Anticheat (check peer against current turn)
 			let turnState = this.DataModel.misc.current_turn;
 			if (turnState.type !== "card_prompt") return;
 			if (this.Anticheat(peer, turnState.pID)) {
@@ -602,7 +601,6 @@ class MonopolisLobbyInstance {
 			this.setTurnState(peer, { type: "card_result", pID: playerState.pID, rolls: turnState.rolls, card, potentialBankrupt: -1 });
 		},
 		monopolis_acknowledgecard: (peer: Peer, payload: undefined): void => {
-			// TODO: this.Anticheat (check peer against current turn)
 			let turnState = this.DataModel.misc.current_turn;
 			if (turnState.type !== "auxroll_result" && turnState.type !== "card_result") return;
 			if (this.Anticheat(peer, turnState.pID)) {
@@ -629,8 +627,7 @@ class MonopolisLobbyInstance {
 			let card = turnState.card;
 			switch (card.type) {
 				case "jail":
-					// FIXME
-					//this.GotoJail();
+					this.GotoJail(peer);
 					return;
 				case "money_gain":
 					teamState.money += card.value;
@@ -707,7 +704,6 @@ class MonopolisLobbyInstance {
 			this.setTurnState(peer, { type: "endturn", pID: playerState.pID, rolls: turnState.rolls });
 		},
 		monopolis_endturn: (peer: Peer, payload: undefined): void => {
-			// TODO: this.Anticheat (check peer against current turn)
 			let turnState = this.DataModel.misc.current_turn;
 			if (turnState.type !== "endturn") return;
 			if (this.Anticheat(peer, turnState.pID)) {
@@ -734,14 +730,280 @@ class MonopolisLobbyInstance {
 				this.setTurnState(peer, { type: "start", pID: playerState.pID, rolls: turnState.rolls, indicators });
 			}
 		},
-		monopolis_requestrenovation: function (peer: Peer, payload: MonopolisRenovationEvent): void {
-			throw new Error("Function not implemented.");
+		monopolis_requestrenovation: (peer: Peer, payload: MonopolisRenovationEvent): void => {
+			let turnState = this.DataModel.misc.current_turn;
+			if (turnState.type !== "endturn" && turnState.type !== "payrent" && turnState.type !== "card_result" && turnState.type !== "auxroll_result") return;
+			const playerState = this.DataModel.player_state[turnState.pID];
+			const teamState = this.DataModel.team_state[playerState.team];
+			if (this.Anticheat(peer, turnState.pID)) {
+				return;
+			}
+	
+			let tile = TileDB.find(tile => tile.id === payload.property) as (RailRoadSpace | UtilitySpace | EstateSpace);
+			if (!tile) return;
+			let propertyState = this.DataModel.property_ownership[tile.id];
+	
+			// Asserts its ownable and if it is, its the current player
+			if (propertyState?.owner !== teamState.tID) { return; }
+
+			if (turnState.type === "payrent") {
+				// if you can afford it, you don't have access to property management
+				if (teamState.money > turnState.price) return;
+				// if you owe someone money and have access to property management, only sell, no buy
+				if (payload.houseCount > propertyState.houseCount) {
+					// HudErrorMessage("#monopolis_property_debt");
+					return;
+				}
+			}
+			if (turnState.type === "card_result") {
+				if (turnState.card.type === "money_lose" || turnState.card.type === "money_lose_others") {
+					// if you can afford it, you don't have access to property management
+					let value = turnState.card.value;
+					if (turnState.card.type === "money_lose_others") {
+						let otherTeams = [];
+						for (let otherTeam of Object.values(this.DataModel.team_state)) {
+							if (teamState.tID === otherTeam.tID) continue;
+							if (otherTeam.alive === false) { continue; }
+							otherTeams.push(otherTeam);
+						}
+						value = otherTeams.length * value;
+					}
+					if (teamState.money > value) return;
+					// if you owe someone money and have access to property management, only sell, no buy
+					if (payload.houseCount > propertyState.houseCount) {
+						// HudErrorMessage("#monopolis_property_debt");
+						return;
+					}
+				} else { return; }
+			}
+			if (turnState.type === "auxroll_result") {
+				// if you can afford it, you don't have access to property management
+				if (teamState.money > turnState.value) return;
+				// if you owe someone money and have access to property management, only sell, no buy
+				if (payload.houseCount > propertyState.houseCount) {
+					// HudErrorMessage("#monopolis_property_debt");
+					return;
+				}
+			}
+	
+			let commonLogicUsed = false;
+			if (propertyState.houseCount === 0 && payload.houseCount === -1) {
+				// 0 => -1, we are mortgaging
+				teamState.money += tile.purchasePrice / 2;
+				propertyState.houseCount = -1;
+				commonLogicUsed = true;
+			} else if (propertyState.houseCount === -1 && payload.houseCount === 0) {
+				// -1 => 0, we are unmortgaging and should take the money + 10% fee
+				let cost = (tile.purchasePrice / 2) * 1.10;
+				if (teamState.money < cost) {
+					// HudErrorMessage("#monopolis_property_broke");
+					return;
+				}
+				teamState.money -= cost;
+				propertyState.houseCount = 0;
+				commonLogicUsed = true;
+			}
+	
+			if (tile.type === "Estate") {
+				let properties = TileDB.filter(row => row.type === "Estate" && row.category === tile.category) as EstateSpace[];
+				let owners = properties.map(row => [row, this.DataModel.property_ownership[row.id]]) as [EstateSpace, PropertyOwnership][];
+				let isMonopoly = true;
+				let minHouseCount = Number.MAX_SAFE_INTEGER;
+				let maxHouseCount = Number.MIN_SAFE_INTEGER;
+				for (let owner of owners) {
+					if (owner[1].owner !== propertyState.owner) {
+						isMonopoly = false;
+					} else {
+						if (owner[1].houseCount < minHouseCount) {
+							minHouseCount = owner[1].houseCount;
+						}
+						if (owner[1].houseCount > maxHouseCount) {
+							maxHouseCount = owner[1].houseCount;
+						}
+					}
+				}
+				let currentDelta = maxHouseCount - minHouseCount;
+				if (currentDelta > 1) {
+					console.log("Wait what, this is illegal.");
+					return;
+				}
+				
+				let delta = payload.houseCount - propertyState.houseCount;
+				// Bound houseCount to legal values
+				if (payload.houseCount > 5 || payload.houseCount < -1) {
+					console.log("Illegal");
+					return;
+				}
+				// Only allow increments of 1 or -1, OR -5
+				// TODO: Reconsider this when I allow "blueprint mode" property management
+				if (Math.abs(delta) > 1 && delta !== -5) {
+					console.log("Illegal");
+					return;
+				}
+				if (currentDelta > 0 && (payload.houseCount > maxHouseCount || payload.houseCount < minHouseCount)) {
+					// HudErrorMessage("#monopolis_property_buildevenly");
+					return;
+				}
+				// If you don't have the monopoly fuck off
+				if (payload.houseCount > 0 && !isMonopoly) {
+					// HudErrorMessage("#monopolis_property_needmonopoly");
+					return;
+				}
+				let market = this.DataModel.misc.housing_market;
+				
+				console.log({propertyState, payload, delta, market, tile});
+				if (propertyState.houseCount === 0 && payload.houseCount === -1) {
+					teamState.money += tile.purchasePrice / 2;
+					propertyState.houseCount = -1;
+				} else if (propertyState.houseCount === -1 && payload.houseCount === 0) {
+					// -1 => 0, we are unmortgaging and should take the money + 10% fee
+					let cost = (tile.purchasePrice / 2) * 1.10;
+					if (teamState.money < cost) {
+						// HudErrorMessage("#monopolis_property_broke");
+						return;
+					}
+					teamState.money -= cost;
+					propertyState.houseCount = 0;
+				}
+				// If you want houses and aren't going to a hotel, needs to have houses in the market
+				else if (payload.houseCount != 5 && delta > 0 && market.houses < delta) {
+					// HudErrorMessage("#monopolis_property_marketcrash_house");
+					return;
+				}
+				// If you want a hotel, need a hotel in the market
+				if (payload.houseCount === 5 && delta > 0 && market.hotels < 1) {
+					// HudErrorMessage("#monopolis_property_marketcrash_hotel");
+					return;
+				}
+				// If you are only removing the hotel and replacing with 4 houses, 4 houses need to be in the market
+				if (delta === -1 && propertyState.houseCount === 5 && market.houses < 4) {
+					// HudErrorMessage("#monopolis_property_marketcrash_house");
+					return;
+				}
+				// if you want a house/hotel and are poor, go away
+				if (delta > 0 && teamState.money < tile.housePrice) {
+					// HudErrorMessage("#monopolis_property_broke");
+					return;
+				}
+				// Sell the hotel and not put houses back on
+				if (delta === -5 && propertyState.houseCount === 5) {
+					market.hotels -= 1;
+					propertyState.houseCount = 0;
+					teamState.money += (tile.housePrice / 2) * 5;
+				}
+				// Buy a hotel (hotels are on the market, delta must be 1 and can afford it)
+				else if (payload.houseCount === 5 && delta > 0) {
+					propertyState.houseCount = 5;
+					market.hotels -= 1;
+					market.houses += 4;
+					teamState.money -= tile.housePrice;
+				}
+				// Buy a house (cant be hotel, houses are on the market, delta must be 1 and can afford it)
+				else if (payload.houseCount > 0 && propertyState.houseCount !== -1 && delta > 0) {
+					propertyState.houseCount += delta;
+					market.houses -= delta;
+					teamState.money -= tile.housePrice;
+				}
+				// Sell a house/hotel
+				else if (delta < 0 && payload.houseCount !== -1) {
+					if (propertyState.houseCount === 5) {
+						market.houses -= (5 + delta);
+						market.hotels += 1;
+					} else {
+						market.houses -= delta;
+					}
+					propertyState.houseCount += delta;
+					teamState.money += (tile.housePrice / 2) * Math.abs(delta);
+				} else if (commonLogicUsed) {}
+				// 0 => -1, we are mortgaging and need to grant money
+				else {
+					console.log("Wait how did it make it this far");
+					return;
+				}
+				
+				this.dispatchState(peer, "monopolis:housing_market", market);
+			}
+			
+			this.dispatchState(peer, "monopolis:property_ownership:"+tile.id, propertyState);
+			this.dispatchState(peer, "monopolis:team_state:"+teamState.tID, teamState);
+			console.log("Saving the market, current property and player?");
 		},
 		monopolis_requesttrade: (peer: Peer, payload: undefined): void => {
 			//throw new Error("Function not implemented.");
 		},
 		monopolis_requestbankrupt: (peer: Peer, payload: undefined): void => {
-			throw new Error("Function not implemented.");
+			let turnState = this.DataModel.misc.current_turn;
+			if (turnState.type !== "payrent" && turnState.type !== "card_result" && turnState.type !== "auxroll_result") return;
+			const playerState = this.DataModel.player_state[turnState.pID];
+			const teamState = this.DataModel.team_state[playerState.team];
+			if (this.Anticheat(peer, turnState.pID)) {
+				return;
+			}
+			if (turnState.type === "payrent") {
+				if (teamState.money > turnState.price) return;
+			}
+			else if (turnState.type === "card_result") {
+				if (turnState.card.type !== "money_lose" && turnState.card.type !== "money_lose_others") return;
+				let value = turnState.card.value;
+				if (turnState.card.type === "money_lose_others") {
+					let otherTeams = [];
+					for (let otherTeam of Object.values(this.DataModel.team_state)) {
+						if (teamState.tID === otherTeam.tID) continue;
+						if (otherTeam.alive === false) { continue; }
+						otherTeams.push(otherTeam);
+					}
+					value = otherTeams.length * value;
+				}
+				if (teamState.money > value) return;
+			} else {
+				if (teamState.money > turnState.value) return;
+			}
+			// if you made it this far, you are genuinely broke, good job
+			
+			let uiState = this.DataModel.misc.ui_state;
+			if (uiState.type === "n/a") {
+				this.DataModel.misc.ui_state = {type: "bankrupt_confirm"};
+				this.dispatchState(peer, "monopolis:ui_state", this.DataModel.misc.ui_state);
+				return;
+			}
+			if (uiState.type !== "bankrupt_confirm") return;
+			// TODO: Make the auto liquidate a setting
+			let modifiedProperties: Array<[string, PropertyOwnership]> = [];
+			for (let [id, state] of Object.entries(this.DataModel.property_ownership)) {
+				if (state.owner === teamState.tID) {
+					let propertyInfo = TileDB.find(property => property.id === id) as EstateSpace|RailRoadSpace|UtilitySpace;
+					if (propertyInfo.type === "Estate" && state.houseCount > 0) {
+						// TODO: Put these back into the market
+						teamState.money += (propertyInfo.housePrice * state.houseCount)/2;
+					}
+					if (turnState.potentialBankrupt !== -1 && state.houseCount >= 0) {
+						teamState.money += propertyInfo.purchasePrice / 2;
+					}
+					// TODO: #pretty destruction of the board
+					modifiedProperties.push([id, {
+						owner: turnState.potentialBankrupt,
+						houseCount: turnState.potentialBankrupt !== -1 ? -1 : 0,
+					}]);
+				}
+			}
+			// when it isn't the bank
+			// TODO: free parking house rule
+			// TODO: Auction all the shit
+				
+			if (turnState.potentialBankrupt !== -1) {
+				let asshole = this.DataModel.team_state[turnState.potentialBankrupt];
+				asshole.money += teamState.money;
+				this.dispatchState(peer, "monopolis:team_state:"+asshole.tID, asshole);
+			}
+			for (let [id, state] of modifiedProperties) {
+				this.dispatchState(peer, "monopolis:property_ownership:"+id, state);
+			}
+			teamState.money = 0;
+			teamState.alive = false;
+			this.dispatchState(peer, "monopolis:team_state:"+teamState.tID, teamState);
+			this.DataModel.misc.ui_state = {type: "n/a"};
+			this.dispatchState(peer, "monopolis:ui_state", this.DataModel.misc.ui_state);
+			this.NextTurn(peer);
 		},
 		monopolis_auctionbid: (peer: Peer, payload: MonopolisAuctionBid): void => {
 			throw new Error("Function not implemented.");

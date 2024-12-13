@@ -1,39 +1,22 @@
-import { Accessor, Component, For, Index, JSX, Match, Show, Signal, Suspense, Switch, createContext, createEffect, createSignal, onCleanup, untrack, useContext } from "solid-js";
+import { Accessor, For, Index, Match, Show, Switch, createContext, createSignal, useContext } from "solid-js";
 import "./app.css";
-import { Dynamic, effect } from "solid-js/web";
-import { degToRad } from "three/src/math/MathUtils";
-import { MapControls } from 'three/addons/controls/MapControls.js';
+import { effect } from "solid-js/web";
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import ThreeMeshUI from 'three-mesh-ui'
+import ThreeMeshUI, { Block } from 'three-mesh-ui'
 import { styled } from "solid-styled-components";
 
-import type { Space, GOSpace, JailSpace, EstateSpace, FreeParkingSpace, GOTOJailSpace, CardDrawSpace, RailRoadSpace, UtilitySpace, TaxSpace } from "./common/tiledb";
-import { TileDB } from "./common/tiledb";
+import { EstateSpace, TileDB } from "./common/tiledb";
 
 import * as THREE from "three";
 window.THREE = THREE;
 
 import 'solid-devtools';
-import { CustomNetTableDeclarations, LobbyMetadata } from "./common/state";
-import { EventMessage, StartEventMessage } from "./common/message";
-import { ColourToString, PlayerColors } from "./common/utils";
+import { CustomNetTableDeclarations, LobbyMetadata, PropertyOwnership } from "./common/state";
+import { calculateXYForSpacePosition, ColourMap, ColourToString, PlayerColors } from "./common/utils";
 import { AuxRollResultState, CardPendingState, CardResultState, DiceRollState, JailedState, PayRentState, UnOwnedState } from "./common/turnstate";
 import { generateUUID } from "three/src/math/MathUtils.js";
-import { getReasonForWebSocketClose } from "./server-actions";
-
-const protocol = window.location.protocol === "http:" ? "ws" : "wss";
-const ws = new WebSocket(`${protocol}://${window.location.host}/_ws`);
-
-const [wsErrorReason, setWsErrorReason] = createSignal("");
-ws.addEventListener("close", async e => {
-  if (e.reason === "") {
-    let serverReason = await getReasonForWebSocketClose(e.code, e.reason);
-    setWsErrorReason(serverReason);
-  } else {
-    setWsErrorReason(e.reason);
-  }
-});
-
+import { createWebSocket, useWSContext, WSContext } from "./ws-context";
+import { Space } from "./spaces/space";
 
 interface Player {
   money: number;
@@ -41,511 +24,12 @@ interface Player {
   color: number;
 }
 
-
-// TODO: More Generic
-const USLocale: Record<string, string> = {
-  "GO": "Go",
-  "BrownA": "Mediterranean Avenue",
-  "CommunityChestA": "Community Chest",
-  "BrownB": "Baltic Avenue",
-  "IncomeTax": "Income Tax",
-  "RailroadA": "Reading Railroad",
-  "LightBlueA": "Oriental Avenue",
-  "ChanceA": "Chance",
-  "LightBlueB": "Vermont Avenue",
-  "LightBlueC": "Connecticut Avenue",
-  "Jail": "Jail",
-  "PinkA": "St. Charles Place",
-  "ElectricCompany": "Electric Company",
-  "PinkB": "States Avenue",
-  "PinkC": "Virginia Avenue",
-  "RailroadB": "Pennsylyania Railroad",
-  "OrangeA": "St. James Place",
-  "CommunityChestB": "Community Chest",
-  "OrangeB": "Tennessee Avenue",
-  "OrangeC": "New York Avenue",
-  "FreeParking": "Free Parking",
-  "RedA": "Kentucky Avenue",
-  "ChanceB": "Chance",
-  "RedB": "Indiana Avenue",
-  "RedC": "Illinois Avenue",
-  "RailroadC": "B & O Railroad",
-  "YellowA": "Atlantic Avenue",
-  "YellowB": "Ventnor Avenue",
-  "Waterworks": "Water Works",
-  "YellowC": "Marvin Gardens",
-  "GOTOJail": "Go to Jail",
-  "GreenA": "Pacific Avenue",
-  "GreenB": "North Carolina Avenue",
-  "CommunityChestC": "Community Chest",
-  "GreenC": "Pennsylyania Avenue",
-  "RailroadD": "Short Line",
-  "ChanceC": "Chance",
-  "DarkBlueA": "Park Place",
-  "SuperTax": "Luxury Tax",
-  "DarkBlueB": "Boardwalk",
-}
-
-const ColourMap = {
-  "Brown": new THREE.Color(0x7e4b27),
-  "LightBlue": new THREE.Color(0x9fd3ed),
-  "Pink": new THREE.Color(0xc93182),
-  "Orange": new THREE.Color(0xe3992d),
-  "Red": new THREE.Color(0xcf112e),
-  "Yellow": new THREE.Color(0xebea50),
-  "Green": new THREE.Color(0x3eab5c),
-  "DarkBlue": new THREE.Color(0x446aa9),
-}
-
-function dispatch<T extends Omit<EventMessage|StartEventMessage, "type">>(ws: WebSocket, event: T) {
-  ws.send(JSON.stringify({
-    ...event,
-    type: event.id.startsWith("start_") ?  "startevent" : "event",
-  }));
-}
-
-const wsRegistrationCache: Record<string, any> = {};
-ws.addEventListener("message", async ev => {
-  let data = ev.data;
-  if (ev.data instanceof Blob) {
-    data = await ev.data.text();
-  }
-  let msg = JSON.parse(data);
-  if ("type" in msg && msg["type"] === "ping") {
-    ws.send(JSON.stringify({type: "pong"}));
-  }
-  if ("id" in msg && "value" in msg) {
-    wsRegistrationCache[msg.id] = msg.value;
-  }
-});
-
-function createWSSignal<T>(ws: WebSocket, identifier: string, defaultValue: T): Signal<T> {
-  const [value, setValue] = createSignal(defaultValue);
-
-  const [bypass, setBypass] = createSignal(true);
-  if (!wsRegistrationCache[identifier]) {
-    ws.send(JSON.stringify({
-      type: "register",
-      id: identifier,
-      defaultValue
-    }));
-  } else {
-    setBypass(true);
-    setValue(wsRegistrationCache[identifier]);
-  }
-
-  const handleMessage = async (ev: MessageEvent) => {
-    let data = ev.data;
-    if (ev.data instanceof Blob) {
-      data = await ev.data.text();
-    }
-    let msg = JSON.parse(data);
-    if ("id" in msg && "value" in msg) {
-      if (msg.id === identifier) {
-        setBypass(true);
-        setValue(msg.value);
-      }
-    }
-  };
-  ws.addEventListener("message", handleMessage);
-  onCleanup(() => {
-    ws.removeEventListener("message", handleMessage);
-  });
-  
-
-  createEffect(() => {
-    const val = value();
-    if (ws.readyState !== ws.OPEN) return;
-    let bypassVal = false;
-    untrack(() => {
-      bypassVal = bypass();
-    })
-    if (bypassVal) {
-      setBypass(false);
-      return;
-    }
-    ws.send(JSON.stringify({
-      type: "change",
-      id: identifier,
-      value: value()
-    }));
-  });
-  return [value, setValue];
-}
-
-interface ImageSpaceProps extends SpaceProps<Space> {
-  image: string;
-}
-function ImageSpace(props: ImageSpaceProps) {
-  const {scene} = useContext(ThreeContext)!;
-
-  const borderGeometry = new THREE.PlaneGeometry(100, 100);
-  const borderMaterial = new THREE.MeshBasicMaterial({color: 0x000000, depthWrite: false });
-  const borderMesh = new THREE.Mesh(borderGeometry, borderMaterial);
-  borderMesh.position.set(10, -10, 0);
-
-  const imageGeometry = new THREE.PlaneGeometry(100, 100);
-  const imageTexture = new THREE.TextureLoader().load(props.image);
-  imageTexture.colorSpace = THREE.SRGBColorSpace; 
-  const imageMaterial = new THREE.MeshBasicMaterial( { map: imageTexture, depthWrite: false } );
-  const imageMesh = new THREE.Mesh( imageGeometry, imageMaterial );
-
-  imageMesh.position.set(10, -10, 0);
-  imageMesh.rotation.set(-props.rotation.x, -props.rotation.y, -props.rotation.z);  
-  const group = new THREE.Group();
-  group.add(borderMesh);
-  group.add(imageMesh);
-
-  group.position.set(props.position.x, props.position.y, props.position.z);
-  group.rotation.set(props.rotation.x, props.rotation.y, props.rotation.z);  
-
-  scene.add( group );
-  onCleanup(() => scene.remove(group));
-  return null;
-}
-function GOSpace(props: SpaceProps<GOSpace>) {
-  return <ImageSpace {...props} image="/go.png" /> 
-}
-function JailSpace(props: SpaceProps<JailSpace>) {
-  return <ImageSpace {...props} image="/jail.png" /> 
-}
-function FreeParkingSpace(props: SpaceProps<FreeParkingSpace>) {
-  return <ImageSpace {...props} image="/freeparking.png" /> 
-}
-function GOTOJailSpace(props: SpaceProps<GOTOJailSpace>) {
-  return <ImageSpace {...props} image="/gotojail.png" /> 
-}
-
-function useCard() {
-  const borderGeometry = new THREE.PlaneGeometry(80, 100);
-  const borderMaterial = new THREE.MeshBasicMaterial({color: 0x000000, depthWrite: false });
-  const borderMesh = new THREE.Mesh(borderGeometry, borderMaterial);
-
-  const backGeometry = new THREE.PlaneGeometry(78, 99);
-  const backMaterial = new THREE.MeshBasicMaterial({color: 0xd1e5d1, depthWrite: false });
-  const backMesh = new THREE.Mesh(backGeometry, backMaterial);
-  backMesh.position.y = -0.5;
-
-  return {borderMesh, backMesh};
-}
-function useText(content: string) {
-  const textBlock = new ThreeMeshUI.Block({
-    width: 78,
-    height: 10,
-    padding: 0.2,
-    backgroundOpacity: 0,
-    fontFamily: '/Roboto-msdf.json',
-    fontTexture: '/Roboto-msdf.png',
-  });
-  textBlock.frame.material.depthWrite = false;
-  const text = new ThreeMeshUI.Text({content, fontSize: 9, fontColor: new THREE.Color(0x000000)});
-  textBlock.add(text);
-  return {text, textBlock};
-}
-
-function EstateSpace(props: SpaceProps<EstateSpace>) {
-  const {scene} = useContext(ThreeContext)!;
-
-  const {borderMesh, backMesh} = useCard();
-
-  const propertySetGeometry = new THREE.PlaneGeometry(78, 20);
-  const propertySetMaterial = new THREE.MeshBasicMaterial({color: ColourMap[props.info.category], depthWrite: false});
-  const propertySetMesh = new THREE.Mesh(propertySetGeometry, propertySetMaterial);
-  propertySetMesh.position.set(0, 40, 0);
-  propertySetMesh.renderOrder = 2;
-
-  const {textBlock: propertyNameBlock} = useText(USLocale[props.info.id].toUpperCase());
-  propertyNameBlock.position.set(0, 20, 0);
-
-  const {textBlock: purchasePriceBlock} = useText("$" + new Intl.NumberFormat().format(props.info.purchasePrice));
-  purchasePriceBlock.position.set(0, -40, 0);
-
-  const cardGroup = new THREE.Group();
-  cardGroup.add(borderMesh);
-  cardGroup.add(backMesh);
-  cardGroup.add(propertySetMesh);
-  cardGroup.add(propertyNameBlock);
-  cardGroup.add(purchasePriceBlock);
-  cardGroup.position.set(0, -10, 0);
-
-  const group = new THREE.Group();
-  group.add(cardGroup);
-
-  scene.add(group);
-  group.position.set(props.position.x, props.position.y, props.position.z);
-  group.rotation.set(props.rotation.x, props.rotation.y, props.rotation.z);
-
-  onCleanup(() => scene.remove(group));
-  return null;
-}
-
-function CardDrawSpace(props: SpaceProps<CardDrawSpace>) {
-  const {scene} = useContext(ThreeContext)!;
-
-  const {borderMesh, backMesh} = useCard();
-
-  const {textBlock: propertyNameBlock} = useText(USLocale[props.info.id].toUpperCase());
-  propertyNameBlock.position.set(0, 35, 0);
-
-  // TODO: Chance / Community Chest imagry
-
-  const cardGroup = new THREE.Group();
-  cardGroup.add(borderMesh);
-  cardGroup.add(backMesh);
-  cardGroup.add(propertyNameBlock);
-  cardGroup.position.set(0, -10, 0);
-
-  const group = new THREE.Group();
-  group.add(cardGroup);
-
-  scene.add(group);
-  group.position.set(props.position.x, props.position.y, props.position.z);
-  group.rotation.set(props.rotation.x, props.rotation.y, props.rotation.z);
-
-  onCleanup(() => scene.remove(group));
-  return null;
-}
-
-function RailRoadSpace(props: SpaceProps<RailRoadSpace>) {
-  const {scene} = useContext(ThreeContext)!;
-
-  const {borderMesh, backMesh} = useCard();
-
-  const {textBlock: propertyNameBlock} = useText(USLocale[props.info.id].toUpperCase());
-  propertyNameBlock.position.set(0, 35, 0);
-
-  
-  const {textBlock: purchasePriceBlock} = useText("$200");
-  purchasePriceBlock.position.set(0, -40, 0);
-
-  // TODO: train imagry
-
-  const cardGroup = new THREE.Group();
-  cardGroup.add(borderMesh);
-  cardGroup.add(backMesh);
-  cardGroup.add(propertyNameBlock);
-  cardGroup.add(purchasePriceBlock);
-  cardGroup.position.set(0, -10, 0);
-
-  const group = new THREE.Group();
-  group.add(cardGroup);
-
-  scene.add(group);
-  group.position.set(props.position.x, props.position.y, props.position.z);
-  group.rotation.set(props.rotation.x, props.rotation.y, props.rotation.z);
-
-  onCleanup(() => scene.remove(group));
-  return null;
-}
-
-function UtilitySpace(props: SpaceProps<UtilitySpace>) {
-  const {scene} = useContext(ThreeContext)!;
-
-  const {borderMesh, backMesh} = useCard();
-
-  const {textBlock: propertyNameBlock} = useText(USLocale[props.info.id].toUpperCase());
-  propertyNameBlock.position.set(0, 35, 0);
-  
-  const {textBlock: purchasePriceBlock} = useText("$150");
-  purchasePriceBlock.position.set(0, -40, 0);
-
-  // TODO: Utility imagry
-
-  const cardGroup = new THREE.Group();
-  cardGroup.add(borderMesh);
-  cardGroup.add(backMesh);
-  cardGroup.add(propertyNameBlock);
-  cardGroup.add(purchasePriceBlock);
-  cardGroup.position.set(0, -10, 0);
-
-  const group = new THREE.Group();
-  group.add(cardGroup);
-
-  scene.add(group);
-  group.position.set(props.position.x, props.position.y, props.position.z);
-  group.rotation.set(props.rotation.x, props.rotation.y, props.rotation.z);
-
-  onCleanup(() => scene.remove(group));
-  return null;
-}
-
-function TaxSpace(props: SpaceProps<TaxSpace>) {
-  const {scene} = useContext(ThreeContext)!;
-
-  const {borderMesh, backMesh} = useCard();
-
-  const {textBlock: propertyNameBlock} = useText(USLocale[props.info.id].toUpperCase());
-  propertyNameBlock.position.set(0, 35, 0);
-
-  // TODO: Chance / Community Chest imagry
-  const {textBlock: purchasePriceBlock} = useText("$" + props.info.cost);
-  purchasePriceBlock.position.set(0, -40, 0);
-
-  const cardGroup = new THREE.Group();
-  cardGroup.add(borderMesh);
-  cardGroup.add(backMesh);
-  cardGroup.add(propertyNameBlock);
-  cardGroup.add(purchasePriceBlock);
-  cardGroup.position.set(0, -10, 0);
-
-  const group = new THREE.Group();
-  group.add(cardGroup);
-
-  scene.add(group);
-  group.position.set(props.position.x, props.position.y, props.position.z);
-  group.rotation.set(props.rotation.x, props.rotation.y, props.rotation.z);
-
-  onCleanup(() => scene.remove(group));
-  return null;
-}
-
-
-interface ThreeContextType {
-  scene: THREE.Scene;
-  camera: THREE.PerspectiveCamera;
-  renderer: THREE.WebGLRenderer;
-}
-interface SpaceProps<T extends Space> {
-  position: THREE.Vector3;
-  rotation: THREE.Euler;
-  info: T;
-}
-
-type SpaceMap = {
-  [P in Space["type"]]: Component<SpaceProps<Extract<Space, { type: P}>>>
-}
-
-function calculateXYForSpacePosition(index: number) {
-  
-  // TODO: Refactor when more complex boards exist
-  const side = Math.floor(index / 10);
-  const delta = index % 10;
-
-  let xComponent = 0;
-  let yComponent = 0;
-  switch (side) {
-    case 0:
-      yComponent = 0;
-      xComponent = -1 * delta * 80;
-      break;
-    case 1:
-      xComponent = -800;
-      yComponent = delta * 80;
-      break;
-    case 2:
-      yComponent = 800;
-      xComponent = -800 + (delta * 80);
-      break;
-    case 3:
-      xComponent = 0;
-      yComponent = 800 - (delta * 80);
-      break;
-  }
-
-  // index 0 = 0,0
-  // index 10 = 1000, 0
-  // index 20 = 1000, 1000
-  // index 30 = 0, 1000
-  // index 40 = 0,0
-  return [new THREE.Vector3(xComponent, yComponent, 0), new THREE.Euler(0, 0, degToRad(-90 * side))];
-}
-
-function Space({info, index}: {info: Space, index: number}) {
-  const [turnState] = createWSSignal<CustomNetTableDeclarations["misc"]["current_turn"]|undefined>(ws, "monopolis:current_turn", undefined);
-  const [propertyState] = createWSSignal<CustomNetTableDeclarations["property_ownership"]["1"]|undefined>(ws, "monopolis:property_ownership:"+info.id, undefined);
-  const [lobbyData] = createWSSignal<CustomNetTableDeclarations["lobbyData"]|undefined>(ws, "monopolis:lobbyData", undefined);
-  const {scene} = useContext(ThreeContext)!;
-  const SpaceMap: SpaceMap = {
-    GO: GOSpace,
-    Jail: JailSpace,
-    FreeParking: FreeParkingSpace,
-    GOTOJail: GOTOJailSpace,
-    Estate: EstateSpace,
-    Railroad: RailRoadSpace,
-    Utility: UtilitySpace,
-    CardDraw: CardDrawSpace,
-    Tax: TaxSpace,
-  }
-  const [position, rotation] = calculateXYForSpacePosition(index);
-
-  const indicatorMaterial = new THREE.MeshBasicMaterial({color: 0xdddddd, side: THREE.DoubleSide});
-  
-  const indicatorSemiCircleGeometry = new THREE.CircleGeometry(20, 30, 0, Math.PI);
-  const indicatorSemiCircleMesh = new THREE.Mesh(indicatorSemiCircleGeometry, indicatorMaterial);
-  indicatorSemiCircleMesh.position.y = 30;
-
-  const indicatorRectGeometry = new THREE.PlaneGeometry(40, 30);
-  const indicatorRectMesh = new THREE.Mesh(indicatorRectGeometry, indicatorMaterial);
-  indicatorRectMesh.position.y = 15;
-
-  const indicatorTextBlock = new ThreeMeshUI.Block({
-    width: 40,
-    height: 40,
-    padding: 0.2,
-    backgroundColor: new THREE.Color(0xdddddd), // TODO: Ownership colour
-    borderRadius: [20, 20, 0, 0],
-    fontFamily: '/Roboto-msdf.json',
-    fontTexture: '/Roboto-msdf.png',
-    //fontSide: THREE.DoubleSide,
-    backgroundSide: THREE.DoubleSide
-  });
-  indicatorTextBlock.frame.material.side = THREE.DoubleSide;
-  console.log(indicatorTextBlock);
-  const text = new ThreeMeshUI.Text({content: "\n\n12", fontSize: 9, fontColor: new THREE.Color(0x000000), fontSide: THREE.DoubleSide,});
-  indicatorTextBlock.add(text);
-  indicatorTextBlock.position.y = 20;
-
-  const indicatorGroup = new THREE.Group();
-  //indicatorGroup.add(indicatorSemiCircleMesh);
-  //indicatorGroup.add(indicatorRectMesh);
-  indicatorGroup.add(indicatorTextBlock);
-
-  indicatorGroup.position.y = 40;
-  indicatorGroup.rotation.x = Math.PI / 2;
-  indicatorGroup.visible = false;
-
-  const group = new THREE.Group();
-  group.add(indicatorGroup);
-  group.position.set(position.x, position.y, position.z);
-
-  group.rotation.set(rotation.x, rotation.y, rotation.z + (index % 10 === 0 ? Math.PI/2 : 0));
-  scene.add(group);
-
-  effect(() => {
-    let property = propertyState();
-    let lobby = lobbyData();
-    if (!property || !lobby) return;
-    if (property.owner !== -1) {
-      // TODO: This is a problem, conflating team and player
-      indicatorTextBlock.set({backgroundColor: new THREE.Color(lobby.players[property.owner].colour)})
-    }
-  });
-  effect(() => {
-    let turn = turnState();
-    console.log(turn, info);
-    if (turn?.type == "start" || turn?.type == "jailed") {
-      let indicator = turn.indicators[info.id];
-      if (indicator) {
-        text.set({content: "\n\n" + indicator.toString()})
-        indicatorGroup.visible = true;
-      } else {
-        indicatorGroup.visible = false;
-      }
-    }
-    else if (turn?.type == "endturn") {
-      indicatorGroup.visible = false;
-    }
-  });
-
-  return (
-    //@ts-expect-error (Dynamic can't know the discrimated union got discriminated when passing info downstream)
-    <Dynamic component={SpaceMap[info.type]} position={position} info={info} rotation={rotation} />
-  )
-}
 function Player({index}: {index: number}) {
   const {scene} = useContext(ThreeContext)!;
 
-  const [playerState] = createWSSignal<CustomNetTableDeclarations["player_state"]["1"] | undefined>(ws, `monopolis:player_state:${index}`, undefined);
+  const {createWSSignal} = useWSContext();
+
+  const [playerState] = createWSSignal<CustomNetTableDeclarations["player_state"]["1"] | undefined>(`monopolis:player_state:${index}`, undefined);
 
   const playerCoinGeometry = new THREE.CylinderGeometry(7, 7, 4, 32);
   const playerCoinMaterial = new THREE.MeshBasicMaterial();
@@ -577,18 +61,49 @@ function Player({index}: {index: number}) {
 
 const TeamHUDCell = styled("div")`
   position: absolute;
-  left: calc(6px + 200px * ${props => props.about});
+  left: calc(6px + 238px * ${props => props.about});
   bottom: 6px;
-  width: 180px;
+  width: 230px;
   background-color: white;
 `;
-function Team({index}: {index: number}) {
-  const [teamState] = createWSSignal<CustomNetTableDeclarations["team_state"]["1"]|undefined>(ws, "monopolis:team_state:"+index, undefined);
+function Team({index, propertyStates}: {index: number, propertyStates: Record<string, Accessor<PropertyOwnership|undefined>>}) {
+  const {createWSSignal} = useWSContext();
+  const [teamState] = createWSSignal<CustomNetTableDeclarations["team_state"]["1"]|undefined>("monopolis:team_state:"+index, undefined);
+  const categories = [...TileDB.filter(tile => tile.type === "Estate").map(tile => tile.category).filter((val, i, array) => array.indexOf(val) === i), "Railroad", "Utility"];
   return (
     <Show when={teamState() != undefined}>
       <TeamHUDCell about={index.toString()}>
         <div>{teamState()!.name}</div>
         <div>{teamState()!.money}</div>
+        <FlexRow>
+          <For each={categories}>
+            {(category) => {
+              const categoryColour = ColourToString(ColourMap[category]);
+              return (<Column>
+              <div style={{width: "10px", height: "3px", "background-color": categoryColour, border: "1px solid black", outline: "1px solid white", margin: "1px"}} />
+              <For each={TileDB.filter(tile => tile.type === category || (tile.type === "Estate" && tile.category === category))}>
+                {(tile) => {
+
+                  const colour = () => {
+                    const owner = propertyStates[tile.id]()?.owner;
+                    let colour = categoryColour;
+                    /*if (owner !== index) {
+                      colour += "30";
+                    }*/
+                    if (owner === -1) {
+                      colour = "#666666";
+                    } else if (owner !== index) {
+                      colour = "#999999";
+                    }
+                    return colour;
+                  }
+
+                  return <div style={{width: "10px", height: "12.5px", "background-color": colour(), border: "1px solid black", outline: "1px solid white", margin: "1px"}} />
+                }}
+              </For>
+            </Column>)}}
+          </For>
+        </FlexRow>
       </TeamHUDCell>
     </Show>
   )
@@ -627,16 +142,18 @@ const CardText = styled("h3")`
   background-color: white;
 `
 function CardScreen(turnState: CardResultState | AuxRollResultState) {
+  const {dispatch} = useWSContext();
   const [disabled, setDisabled] = createSignal(true);
   setTimeout(() => setDisabled(false), 1000);
   return (<div>
     <CardText id="card-text">{turnState.card.text}</CardText>
-    <button id="trade" onClick={() => dispatch(ws, {id: "monopolis_acknowledgecard", payload: undefined})} disabled={disabled()}>OK</button>
+    <button id="trade" onClick={() => dispatch({id: "monopolis_acknowledgecard", payload: undefined})} disabled={disabled()}>OK</button>
   </div>);
 }
 function GlobalHUD() {
-  const [turnState] = createWSSignal<CustomNetTableDeclarations["misc"]["current_turn"] | undefined>(ws, "monopolis:current_turn", undefined);
-  const [lobbyData] = createWSSignal<CustomNetTableDeclarations["lobbyData"] | undefined>(ws, "monopolis:lobbyData", undefined);
+  const {createWSSignal, dispatch} = useWSContext();
+  const [turnState] = createWSSignal<CustomNetTableDeclarations["misc"]["current_turn"] | undefined>("monopolis:current_turn", undefined);
+  const [lobbyData] = createWSSignal<CustomNetTableDeclarations["lobbyData"] | undefined>("monopolis:lobbyData", undefined);
   //setInterval(() => {
   //  setCurrentPlayer(prev => (prev + 1) % 25);
   //}, 5000);
@@ -652,28 +169,28 @@ function GlobalHUD() {
       </Show>
       <ActionButtonContainer>
         <Show when={turnState()!.type === "start" || turnState()!.type === "auxroll_prompt" || (turnState()!.type === "jailed" && (turnState() as JailedState)!.preRolled === false)}>
-          <button id="rolldice" onClick={() => dispatch(ws, {id: "monopolis_requestdiceroll", payload: undefined})}>Roll Dice</button>
+          <button id="rolldice" onClick={() => dispatch({id: "monopolis_requestdiceroll", payload: undefined})}>Roll Dice</button>
         </Show>
         <Show when={turnState()!.type === "unowned"}>
-          <button id="purchase" onClick={() => dispatch(ws, {id: "monopolis_requestpurchase", payload: undefined})}>Purchase for ${(TileDB.find(tile => tile.id === (turnState() as UnOwnedState)!.property) as EstateSpace).purchasePrice}</button>
+          <button id="purchase" onClick={() => dispatch({id: "monopolis_requestpurchase", payload: undefined})}>Purchase for ${(TileDB.find(tile => tile.id === (turnState() as UnOwnedState)!.property) as EstateSpace).purchasePrice}</button>
         </Show>
         <Show when={turnState()!.type === "unowned"}>
-          <button id="auction" onClick={() => dispatch(ws, {id: "monopolis_requestauction", payload: undefined})}>Auction</button>
+          <button id="auction" onClick={() => dispatch({id: "monopolis_requestauction", payload: undefined})}>Auction</button>
         </Show>
         <Show when={turnState()!.type === "payrent"}>
-          <button id="payrent" onClick={() => dispatch(ws, {id: "monopolis_requestpayrent", payload: undefined})}>Pay ${(turnState() as PayRentState).price}</button>
+          <button id="payrent" onClick={() => dispatch({id: "monopolis_requestpayrent", payload: undefined})}>Pay ${(turnState() as PayRentState).price}</button>
         </Show>
         <Show when={turnState()!.type === "jailed"}>
-          <button id="payjail" onClick={() => dispatch(ws, {id: "monopolis_requestpayrent", payload: undefined})}>Pay $50</button>
+          <button id="payjail" onClick={() => dispatch({id: "monopolis_requestpayrent", payload: undefined})}>Pay $50</button>
         </Show>
         <Show when={turnState()!.type === "endturn"}>
-          <button id="endturn" onClick={() => dispatch(ws, {id: "monopolis_endturn", payload: undefined})}>End turn</button>
+          <button id="endturn" onClick={() => dispatch({id: "monopolis_endturn", payload: undefined})}>End turn</button>
         </Show>
         <Show when={turnState()!.type === "endturn"}>
-          <button id="trade" onClick={() => dispatch(ws, {id: "monopolis_requesttrade", payload: undefined})}>Trade</button>
+          <button id="trade" onClick={() => dispatch({id: "monopolis_requesttrade", payload: undefined})}>Trade</button>
         </Show>
         <Show when={turnState()!.type === "card_prompt"}>
-          <button id="trade" onClick={() => dispatch(ws, {id: "monopolis_requestcard", payload: undefined})}>Draw {(turnState() as CardPendingState).deck} card</button>
+          <button id="trade" onClick={() => dispatch({id: "monopolis_requestcard", payload: undefined})}>Draw {(turnState() as CardPendingState).deck} card</button>
         </Show>
         <Show when={turnState()!.type === "card_result" || turnState()!.type === "auxroll_result"}>
           <CardScreen {...turnState() as CardResultState | AuxRollResultState} />
@@ -705,9 +222,10 @@ const Column = styled("div")`
   flex-direction: column;
 `
 function LobbyManagement({lobby}: {lobby: Accessor<CustomNetTableDeclarations["lobbyData"]|undefined>}) {
-  const [localId] = createWSSignal(ws, "localId", sessionStorage.getItem("MONOPOLIS_LOCALID"));
-  const [localName] = createWSSignal(ws, "localName", "");
-  const [lobbyList] = createWSSignal<LobbyMetadata[]>(ws, "lobbyList", []);
+  const {createWSSignal, dispatch} = useWSContext();
+  const [localId] = createWSSignal("localId", sessionStorage.getItem("MONOPOLIS_LOCALID"));
+  const [localName] = createWSSignal("localName", "");
+  const [lobbyList] = createWSSignal<LobbyMetadata[]>("lobbyList", []);
 
   const proposedLocalId = generateUUID();
 
@@ -734,7 +252,7 @@ function LobbyManagement({lobby}: {lobby: Accessor<CustomNetTableDeclarations["l
         <Column>
           <label>Player Name: </label>
           <input type="text" value={proposedLocalName()} onInput={e => setProposedLocalName(e.currentTarget.value)}></input>
-          <button disabled={proposedLocalName().length < 1} onClick={() => dispatch(ws, {id: "start_createuser", payload: {playerName: proposedLocalName(), localId: proposedLocalId}})}>Select Name</button>
+          <button disabled={proposedLocalName().length < 1} onClick={() => dispatch({id: "start_createuser", payload: {playerName: proposedLocalName(), localId: proposedLocalId}})}>Select Name</button>
         </Column>
       </Match>
       <Match when={lobby() == null}>
@@ -746,14 +264,14 @@ function LobbyManagement({lobby}: {lobby: Accessor<CustomNetTableDeclarations["l
                   <h3>{item.name}{item.started ? " (in progress)" : ""}</h3>
                   <div>hosted by {item.hostName}</div>
                   <div>{item.playerCount}/{item.maxPlayers} players</div>
-                  <button disabled={(item.maxPlayers - item.playerCount) < 1} onClick={() => dispatch(ws, {id: "start_lobbyjoin", payload: {lobbyId: item.lobbyId}})}>Join Game</button>
+                  <button disabled={(item.maxPlayers - item.playerCount) < 1} onClick={() => dispatch({id: "start_lobbyjoin", payload: {lobbyId: item.lobbyId}})}>Join Game</button>
                 </div>}
             </For>
           </Column>
           <Column>
             <label>Lobby Name:</label>
             <input type="text" value={proposedLobbyName()} onInput={e => setProposedLobbyName(e.currentTarget.value)}></input>
-            <button onClick={() => dispatch(ws, {id: "start_lobbycreate", payload: {lobbyName: proposedLobbyName()}})}>Create Lobby</button>
+            <button onClick={() => dispatch({id: "start_lobbycreate", payload: {lobbyName: proposedLobbyName()}})}>Create Lobby</button>
           </Column>
         </FlexRow>
       </Match>
@@ -766,7 +284,7 @@ function LobbyManagement({lobby}: {lobby: Accessor<CustomNetTableDeclarations["l
                 {(colour, index) => lobby()?.players.find(player => player.colour === colour()) == null && <button style={{"background-color": ColourToString(colour()), height: "20px"}} onClick={e => setLocalColour(colour())}></button>}
               </Index>
             </FlexRow>
-            <button disabled={localColour() == null || localName().length < 1} onClick={() => dispatch(ws, {id: "lobby_addplayer", payload: {playerName: localName(), playerColour: localColour()!, localId: proposedLocalId}})}>Join Game</button>
+            <button disabled={localColour() == null || localName().length < 1} onClick={() => dispatch({id: "lobby_addplayer", payload: {playerName: localName(), playerColour: localColour()!, localId: proposedLocalId}})}>Join Game</button>
           </Column>
         </Show>
         <Show when={localPlayer()?.configured === true}>
@@ -788,19 +306,19 @@ function LobbyManagement({lobby}: {lobby: Accessor<CustomNetTableDeclarations["l
                   </Show>}
                 </Index>
                 <Show when={localTeam() === -1}>
-                  <button onClick={() => dispatch(ws, {id: "lobby_jointeam", payload: {teamId: tID}})}>Join Team</button>
+                  <button onClick={() => dispatch({id: "lobby_jointeam", payload: {teamId: tID}})}>Join Team</button>
                 </Show>
               </Column>}
             </Index>
             <Show when={(lobby()?.teams.length ?? 0) < 8}>
               <Column>
                 <input type="text" value={pendingTeamName()} oninput={e => setPendingTeamName(e.currentTarget.value)}></input>
-                <button disabled={pendingTeamName().length < 1} onClick={() => dispatch(ws, {id: "lobby_addteam", payload: {teamName: pendingTeamName()}})}>Add Team</button>
+                <button disabled={pendingTeamName().length < 1} onClick={() => dispatch({id: "lobby_addteam", payload: {teamName: pendingTeamName()}})}>Add Team</button>
               </Column>
             </Show>
           </FlexRow>
           <Show when={isFirstPlayer()}>
-            <button onclick={() => dispatch(ws, {id: "lobby_start", payload: undefined})}>Start Game</button>
+            <button onclick={() => dispatch({id: "lobby_start", payload: undefined})}>Start Game</button>
           </Show>
         </Show>
       </Match>
@@ -809,9 +327,12 @@ function LobbyManagement({lobby}: {lobby: Accessor<CustomNetTableDeclarations["l
 }
 
 function Monopolis() {
-  const [lobbyState] = createWSSignal<CustomNetTableDeclarations["lobbyData"]|undefined>(ws, "monopolis:lobbyData", undefined);
+  const {createWSSignal} = useWSContext();
+  const [lobbyState] = createWSSignal<CustomNetTableDeclarations["lobbyData"]|undefined>("monopolis:lobbyData", undefined);
 
-  const [localId] = createWSSignal(ws, "localId", sessionStorage.getItem("MONOPOLIS_LOCALID"));
+  const propertyStates = Object.fromEntries(Object.values(TileDB).filter(tile => tile.type === "Estate" || tile.type === "Railroad" || tile.type === "Utility").map(info => [info.id, createWSSignal<CustomNetTableDeclarations["property_ownership"]["1"]|undefined>("monopolis:property_ownership:"+info.id, undefined)[0]]));
+
+  const [localId] = createWSSignal("localId", sessionStorage.getItem("MONOPOLIS_LOCALID"));
   effect(() => {
     let id = localId();
     if (id) {
@@ -820,17 +341,19 @@ function Monopolis() {
       sessionStorage.removeItem("MONOPOLIS_LOCALID");
     }
   })
+
+  const localLobbyPlayer = () => Array.from(lobbyState()?.players.entries() ?? []).find(p => p[1].localId === localId());
   return (
     <>
       <Index each={TileDB}>
-        {(item, index) => <Space info={item()} index={index} />}
+        {(item, index) => <Space info={item()} index={index} localLobbyPlayer={localLobbyPlayer} />}
       </Index>
       <Show when={lobbyState()?.started}>
         <Index each={lobbyState()!.players}>
           {(item, index) => <Player index={index} />}
         </Index>
         <Index each={lobbyState()!.teams}>
-          {(item, index) => <Team index={index} />}
+          {(item, index) => <Team index={index} propertyStates={propertyStates} />}
         </Index>
         <GlobalHUD />
       </Show>
@@ -841,50 +364,91 @@ function Monopolis() {
   )
 }
 
+interface ThreeContextType {
+  scene: THREE.Scene;
+  camera: THREE.PerspectiveCamera;
+  renderer: THREE.WebGLRenderer;
+  raytraceEntities: THREE.Object3D[];
+}
 export const ThreeContext = createContext<ThreeContextType>();
-export default function App() {
-  const [wsReady, setWSReady] = createSignal(false);
 
-  ws.addEventListener("open", () => setWSReady(true));
-  ws.addEventListener("close", () => setWSReady(false));
+export default function App() {
+  const {context, wsErrorReason, wsReady} = createWebSocket();
 
   const clock = new THREE.Clock();
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100000);
+  camera.layers.enable(1);
   camera.up = new THREE.Vector3(0, 0, 1);
   camera.position.set(-400, -200, 400);
   const renderer = new THREE.WebGLRenderer({antialias: true});
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  renderer.setSize(width, height);
+
+  const raycaster = new THREE.Raycaster();
+  raycaster.layers.set(1);
+  const pointer = new THREE.Vector2();
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target = new THREE.Vector3(-400, 400, 0);
-  //controls.screenSpacePanning = true;
+
+  renderer.domElement.addEventListener("pointermove", e => {
+    e.preventDefault();
+    pointer.x = (e.clientX / width) * 2 - 1;
+    pointer.y = - (e.clientY / height) * 2 + 1;
+  });
+  let selectState = false;
+  renderer.domElement.addEventListener("pointerdown", () => {
+    selectState = true;
+  });
+  renderer.domElement.addEventListener("pointerup", () => {
+    selectState = false;
+  });
+  renderer.domElement.addEventListener("pointerleave", () => {
+    pointer.x = -1;
+    pointer.y = -1;
+  })
 
   function renderLoop() {
     controls.update( clock.getDelta() );
+    raycaster.setFromCamera(pointer, camera);
+    const intersections = raycaster.intersectObjects(scene.children);
+    if (intersections.length) {
+      for (let intersection of intersections) {
+        if (intersection.object.parent instanceof Block) {
+          intersection.object.parent.setState(selectState ? "selected": "hovered");
+        }
+      }
+    }
+    for (let obj of raytraceEntities) {
+      const frame = obj.children.find(obj => obj.layers.isEnabled(1));
+      if (!frame) continue;
+      if (intersections.find(intersect => intersect.object === frame)) continue;
+      obj.setState("idle");
+    }
     renderer.render(scene, camera);
     ThreeMeshUI.update();
   }
   renderer.setAnimationLoop(renderLoop);
 
-  const global = window as unknown as any;
-  global["monoplis_scene"] = scene;
-  global["monopolis_camera"] = camera;
-  global["monopolis_renderer"] = renderer;
+  const raytraceEntities: THREE.Object3D[] = [];
 
   return (
-    <ThreeContext.Provider value={{scene, camera, renderer}}>
-      <Show when={wsReady()}>
-        {renderer.domElement}
-        <Monopolis />
-      </Show>
-      <Show when={!wsReady() && wsErrorReason()}>
-        <LobbyMenu>
-          <h1>Connection to Monopolis failed</h1>
-          <pre>{wsErrorReason()}</pre>
-        </LobbyMenu>
-      </Show>
-    </ThreeContext.Provider>
+    <WSContext.Provider value={context}>
+      <ThreeContext.Provider value={{scene, camera, renderer, raytraceEntities}}>
+        <Show when={wsReady()}>
+          {renderer.domElement}
+          <Monopolis />
+        </Show>
+        <Show when={!wsReady() && wsErrorReason()}>
+          <LobbyMenu>
+            <h1>Connection to Monopolis failed</h1>
+            <pre>{wsErrorReason()}</pre>
+          </LobbyMenu>
+        </Show>
+      </ThreeContext.Provider>
+    </WSContext.Provider>
   );
 }

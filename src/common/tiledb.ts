@@ -19,6 +19,7 @@ export interface EstateSpace {
     id: string;
     category: string;
     purchasePrice: number;
+    housePrice: number;
     rent: number[];
 }
 export interface RailRoadSpace {
@@ -60,6 +61,7 @@ export const TileDB: Space[] = [
       id: "BrownA",
       category: "Brown",
       purchasePrice: 60,
+      housePrice: 50,
       rent: [2, 10, 30, 90, 160, 250],
     },
     { type: "CardDraw", id: "CommunityChestA", category: "CommunityChest" },
@@ -68,6 +70,7 @@ export const TileDB: Space[] = [
       id: "BrownB",
       category: "Brown",
       purchasePrice: 60,
+      housePrice: 50,
       rent: [4, 20, 60, 180, 320, 450],
     },
     { type: "Tax", id: "IncomeTax", cost: 200 },
@@ -77,6 +80,7 @@ export const TileDB: Space[] = [
       id: "LightBlueA",
       category: "LightBlue",
       purchasePrice: 100,
+      housePrice: 50,
       rent: [6, 30, 90, 270, 400, 550],
     },
     { type: "CardDraw", id: "ChanceA", category: "Chance" },
@@ -85,6 +89,7 @@ export const TileDB: Space[] = [
       id: "LightBlueB",
       category: "LightBlue",
       purchasePrice: 100,
+      housePrice: 50,
       rent: [6, 30, 90, 270, 400, 550],
     },
     {
@@ -92,6 +97,7 @@ export const TileDB: Space[] = [
       id: "LightBlueC",
       category: "LightBlue",
       purchasePrice: 120,
+      housePrice: 50,
       rent: [8, 40, 100, 300, 450, 600],
     },
     { type: "Jail", id: "Jail" },
@@ -100,6 +106,7 @@ export const TileDB: Space[] = [
       id: "PinkA",
       category: "Pink",
       purchasePrice: 140,
+      housePrice: 100,
       rent: [10, 50, 150, 450, 625, 750],
     },
     { type: "Utility", id: "ElectricCompany", multipliers: [4, 10], purchasePrice: 150 },
@@ -108,6 +115,7 @@ export const TileDB: Space[] = [
       id: "PinkB",
       category: "Pink",
       purchasePrice: 140,
+      housePrice: 100,
       rent: [10, 50, 150, 450, 625, 750],
     },
     {
@@ -115,6 +123,7 @@ export const TileDB: Space[] = [
       id: "PinkC",
       category: "Pink",
       purchasePrice: 160,
+      housePrice: 100,
       rent: [12, 60, 180, 500, 700, 900],
     },
     { type: "Railroad", id: "RailroadB", purchasePrice: 200 },
@@ -123,6 +132,7 @@ export const TileDB: Space[] = [
       id: "OrangeA",
       category: "Orange",
       purchasePrice: 180,
+      housePrice: 100,
       rent: [14, 70, 200, 550, 750, 950],
     },
     { type: "CardDraw", id: "CommunityChestB", category: "CommunityChest" },
@@ -131,6 +141,7 @@ export const TileDB: Space[] = [
       id: "OrangeB",
       category: "Orange",
       purchasePrice: 180,
+      housePrice: 100,
       rent: [14, 70, 200, 550, 750, 950],
     },
     {
@@ -138,6 +149,7 @@ export const TileDB: Space[] = [
       id: "OrangeC",
       category: "Orange",
       purchasePrice: 200,
+      housePrice: 100,
       rent: [16, 80, 220, 600, 800, 1000],
     },
     { type: "FreeParking", id: "FreeParking" },
@@ -146,6 +158,7 @@ export const TileDB: Space[] = [
       id: "RedA",
       category: "Red",
       purchasePrice: 220,
+      housePrice: 150,
       rent: [18, 90, 250, 700, 875, 1050],
     },
     { type: "CardDraw", id: "ChanceB", category: "Chance" },
@@ -154,6 +167,7 @@ export const TileDB: Space[] = [
       id: "RedB",
       category: "Red",
       purchasePrice: 220,
+      housePrice: 150,
       rent: [18, 90, 250, 700, 875, 1050],
     },
     {
@@ -161,6 +175,7 @@ export const TileDB: Space[] = [
       id: "RedC",
       category: "Red",
       purchasePrice: 240,
+      housePrice: 150,
       rent: [20, 100, 300, 750, 925, 1100],
     },
     { type: "Railroad", id: "RailroadC", purchasePrice: 200 },
@@ -169,6 +184,7 @@ export const TileDB: Space[] = [
       id: "YellowA",
       category: "Yellow",
       purchasePrice: 260,
+      housePrice: 150,
       rent: [22, 110, 330, 800, 950, 1150],
     },
     {
@@ -176,6 +192,7 @@ export const TileDB: Space[] = [
       id: "YellowB",
       category: "Yellow",
       purchasePrice: 260,
+      housePrice: 150,
       rent: [22, 110, 330, 800, 950, 1150],
     },
     { type: "Utility", id: "Waterworks", multipliers: [4, 10], purchasePrice: 150 },
@@ -184,6 +201,7 @@ export const TileDB: Space[] = [
       id: "YellowC",
       category: "Yellow",
       purchasePrice: 280,
+      housePrice: 150,
       rent: [24, 120, 360, 850, 1025, 1200],
     },
     { type: "GOTOJail", id: "GOTOJail" },
@@ -192,6 +210,7 @@ export const TileDB: Space[] = [
       id: "GreenA",
       category: "Green",
       purchasePrice: 300,
+      housePrice: 200,
       rent: [26, 130, 390, 900, 1100, 1275],
     },
     {
@@ -199,6 +218,7 @@ export const TileDB: Space[] = [
       id: "GreenB",
       category: "Green",
       purchasePrice: 300,
+      housePrice: 200,
       rent: [26, 130, 390, 900, 1100, 1275],
     },
     { type: "CardDraw", id: "CommunityChestC", category: "CommunityChest" },
@@ -207,6 +227,7 @@ export const TileDB: Space[] = [
       id: "GreenC",
       category: "Green",
       purchasePrice: 320,
+      housePrice: 200,
       rent: [28, 150, 450, 1000, 1200, 1400],
     },
     { type: "Railroad", id: "RailroadD", purchasePrice: 200 },
@@ -216,6 +237,7 @@ export const TileDB: Space[] = [
       id: "DarkBlueA",
       category: "DarkBlue",
       purchasePrice: 350,
+      housePrice: 200,
       rent: [35, 175, 500, 1100, 1300, 1500],
     },
     { type: "Tax", id: "SuperTax", cost: 100 },
@@ -224,6 +246,7 @@ export const TileDB: Space[] = [
       id: "DarkBlueB",
       category: "DarkBlue",
       purchasePrice: 400,
+      housePrice: 200,
       rent: [50, 200, 600, 1400, 1700, 2000],
     },
 ];
