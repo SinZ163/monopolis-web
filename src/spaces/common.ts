@@ -114,7 +114,10 @@ export function useMortgage(props: SpaceProps<EstateSpace|RailRoadSpace|UtilityS
         let player = props.localLobbyPlayer();
         let turn = turnState();
         let propState = propertyState();
-        if (!turn || !player || !propState) return;
+        if (!turn || !player || !propState) {
+            mortgageBlock.visible = false;
+            return;
+        }
         if (propState.houseCount === -1) {
             mortgageText.set({content: "Unmortgage"});
         } else {
