@@ -26,7 +26,7 @@ interface LobbyMetadata {
     lobbyId: string,
 	name: string,
 	hostName: string,
-	started: boolean,
+	status: "lobby" | "inprogress" | "over",
 	playerCount: number,
 	maxPlayers: number, // Will be hardcoded for now
 }
@@ -57,7 +57,7 @@ interface CustomNetTableDeclarations {
         teams: {
             name: string,
         }[],
-        started: boolean,
+        status: "lobby" | "inprogress" | "over",
         name: string,
         host: {
             name: string,

@@ -42,3 +42,46 @@ export const USLocale: Record<string, string> = {
     "SuperTax": "Luxury Tax",
     "DarkBlueB": "Boardwalk",
   }
+
+export const Deck2008 = {
+  "card_money_gain": "Gain {d:value}",
+  "card_money_gain_other": "Gain {d:value} from each player ({d:total})",
+  "card_money_lose": "Pay {d:value}",
+  "card_money_lose_other": "Pay {d:value} to each player ({d:total})",
+  "card_repairs": "Pay {d:var1} ({d:var2} houses, {d:var3} hotels)",
+
+  "card_teleport": "OK",
+  "card_teleport_category": "OK",
+  "card_teleport_relative": "OK",
+
+  "card_jail_text": "Go to Jail. Go directly to Jail. Do not pass GO, do not collect 200.",
+  "card_fuckjail_text": "Get out of Jail Free. This card may be kept until needed, or traded/sold.",
+
+  "card_adv": "Advance to {{ dest }}. If you pass Go, collect 200.",
+  "card_adv_go": "Advance to {{ dest }}. (Collect 200)",
+  "card_adv_railroad1": "Take a trip to {{ dest }}. If you pass Go, collect 200.", // TODO: Locale test subtly different between US and UK
+  "card_adv_blue2": "Take a walk on the {{ dest }}.", // TODO: Locale different between US and UK
+  "card_adv_utility": "Advance token to the nearest Utility. If unowned, you may buy it from the Bank. If owned, throw dice and pay owner a total 10 times the amount thrown.",
+  "card_adv_railroad": "Advance to the next Railroad. If unowned, you may buy it from the Bank. If owned, pay the owner twice the rent to which they are otherwise entitled. If railroad is unowned, you may buy it from the Bank.",
+  "card_adv_relative_back": "Go back {{ value }} spaces.",
+
+  "CHANCE_BankDividend": "Bank pays you dividend of {{ value }}.",
+  "CHANCE_GeneralRepairs": "Make general repairs on all your property: For each house pay {{ house }}, For each hotel pay {{ hotel }}.",
+  "CHANCE_Speeding": "Speeding fine {{ value }}",
+  "CHANCE_Chairman": "You have been electred Chairman of the Board. Pay each player {{ value }}.",
+  "CHANCE_BuildingLoan": "Your building loan matures. Receive {{ value }}.",
+
+  "COMMUNITYCHEST_BankError": "Bank error in your favor. Collect {{ value }}.",
+  "COMMUNITYCHEST_Doctor": "Doctor's fees. Pay {{ value }}.",
+  "COMMUNITYCHEST_Stock": "From sale of stock you get {{ value }}.",
+  "COMMUNITYCHEST_HolidaySeason": "Holiday Fund matures. Receive {{ value }}.",
+  "COMMUNITYCHEST_Income": "Income tax refund. Collect {{ value }}.",
+  "COMMUNITYCHEST_Birthday": "It is your birthday. Collect {{ value }} from every player.",
+  "COMMUNITYCHEST_LifeInsurance": "Life insurance matures - Collect {{ value }}.",
+  "COMMUNITYCHEST_Hospital": "Hospital Fees. Pay {{ value }}.",
+  "COMMUNITYCHEST_School": "School fees. Pay {{ value }}.",
+  "COMMUNITYCHEST_Consultancy": "Receive {{ value }} consultancy fee.",
+  "COMMUNITYCHEST_StreetRepairs": "You are assessed for street repairs: Pay {{ house }} per house and {{ hotel }} per hotel you own.",
+  "COMMUNITYCHEST_Beauty": "You have won second prize in a beauty contest. Collect {{ value }}.",
+  "COMMUNITYCHEST_Inherit": "You inherit {{ value }}.",
+}

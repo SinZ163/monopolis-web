@@ -60,7 +60,7 @@ export const createWebSocket = () => {
     if ("type" in msg && msg["type"] === "ping") {
       ws.send(JSON.stringify({ type: "pong" }));
     }
-    if ("id" in msg && "value" in msg) {
+    if ("id" in msg) {
       wsRegistrationCache[msg.id] = msg.value;
     }
   });
@@ -91,11 +91,9 @@ export const createWebSocket = () => {
         data = await ev.data.text();
       }
       let msg = JSON.parse(data);
-      if ("id" in msg && "value" in msg) {
-        if (msg.id === identifier) {
-          setBypass(true);
-          setValue(msg.value);
-        }
+      if ("id" in msg && msg.id === identifier) {
+        setBypass(true);
+        setValue(msg.value);
       }
     };
     ws.addEventListener("message", handleMessage);

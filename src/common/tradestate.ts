@@ -1,19 +1,19 @@
 import { PurchasableTiles, PlayerID } from "./utils";
 
-interface PropertyTradeOffer {
+export interface PropertyTradeOffer {
     type: "property";
     property: PurchasableTiles;
     from: PlayerID;
     to: PlayerID;
 }
-interface MoneyTradeOffer {
+export interface MoneyTradeOffer {
     type: "money";
     money: number;
     from: PlayerID;
     to: PlayerID;
 }
-type TradeOffers = PropertyTradeOffer | MoneyTradeOffer;
-interface TradeState {
+export type TradeOffers = PropertyTradeOffer | MoneyTradeOffer;
+export interface TradeState {
     initiator: PlayerID,
     current: PlayerID,
     participants: PlayerID[],
@@ -22,7 +22,7 @@ interface TradeState {
     confirmations: Partial<Record<PlayerID, boolean>>,
     status: TradeStateStatus
 }
-declare const enum TradeStateStatus {
+export enum TradeStateStatus {
     ModifyTrade,
     Confirmation,
 }

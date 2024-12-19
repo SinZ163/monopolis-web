@@ -60,7 +60,6 @@ export function Space({info, index, localLobbyPlayer}: {info: Space, index: numb
       backgroundSide: THREE.DoubleSide
     });
     indicatorTextBlock.frame.material.side = THREE.DoubleSide;
-    console.log(indicatorTextBlock);
     const text = new ThreeMeshUI.Text({content: "\n\n12", fontSize: 9, fontColor: new THREE.Color(0x000000), fontSide: THREE.DoubleSide,});
     indicatorTextBlock.add(text);
     indicatorTextBlock.position.y = 20;
@@ -92,7 +91,6 @@ export function Space({info, index, localLobbyPlayer}: {info: Space, index: numb
     });
     effect(() => {
       let turn = turnState();
-      console.log(turn, info);
       if (turn?.type == "start" || turn?.type == "jailed") {
         let indicator = turn.indicators[info.id];
         if (indicator) {

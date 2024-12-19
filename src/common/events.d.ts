@@ -19,7 +19,9 @@ interface CustomGameEventDeclarations {
     monopolis_requesttrade: MonopolisEmptyEvent, //C-->S
 
     // Available in state payrent* and card_result*
-    monopolis_requestbankrupt: MonopolisEmptyEvent, //C-->S
+    monopolis_requestbankrupt: boolean|undefined, //C-->S
+
+    monopolis_requestpass: MonopolisEmptyEvent, //C-->S
 
     // Available in state auction
     monopolis_auctionbid: MonopolisAuctionBid, //C-->S
@@ -35,6 +37,7 @@ interface CustomGameEventDeclarations {
 interface StartEvents {
     start_lobbycreate: StartLobbyCreateEvent,
     start_lobbyjoin: StartLobbyJoinEvent,
+    start_lobbyleave: MonopolisEmptyEvent,
     start_createuser: StartCreateUserEvent,
 }
 interface StartCreateUserEvent {

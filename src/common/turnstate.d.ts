@@ -13,7 +13,7 @@ interface TransitionTurnState extends BaseState {
     type: "transition";
 }
 
-interface JailedState extends BaseState {
+interface JailedState extends BankruptableState {
     type: "jailed";
     indicators: Partial<Record<Tiles, number>>;
     preRolled: boolean;
@@ -65,8 +65,14 @@ interface AuxRollResultState extends BankruptableState {
     value: number
 }
 
+interface GameEndState {
+    type: "gameend";
+    winner: number;
+}
+
+
 interface LobbyState {
     type: "lobby";
 }
 
-type TurnState = TransitionTurnState | JailedState | StartTurnState | DiceRollState | PayRentState | UnOwnedState | AuctionTurnState | EndTurnState | CardPendingState | CardResultState | AuxRollPromptState | AuxRollResultState | LobbyState;
+type TurnState = TransitionTurnState | JailedState | StartTurnState | DiceRollState | PayRentState | UnOwnedState | AuctionTurnState | EndTurnState | CardPendingState | CardResultState | AuxRollPromptState | AuxRollResultState | GameEndState | LobbyState;
